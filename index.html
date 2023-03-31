@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Github_Issues</title>
+
+  <style>
+    table {
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+
+    table,
+    th,
+    td {
+      border: 1px solid black;
+      padding: 5px;
+      text-align: center;
+    }
+
+    th {
+      background-color: #ccc;
+    }
+
+    .modal {
+      display: none;
+      position: fixed;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.5);
+      z-index: 1;
+    }
+
+    .modal-content {
+      background-color: white;
+      margin: 10% auto;
+      padding: 20px;
+      width: 80%;
+      max-height: 70%;
+      overflow-y: auto;
+    }
+
+    #showIssues {
+      margin-top: 20px;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>GitHub Issues Metrics </h1>
+  <input name="searchTxt" type="text" maxlength="512" id="searchTxt" class="searchField" placeholder="Enter GitHub url" />
+  <button id="submit" onclick="handleSubmit(event)">Submit</button>
+  <div id="sdf"></div>
+  <div id="status-wise-count"></div>
+  <div id="week-wise-count"></div>
+  <div id="average-weekly-closure-rate"></div>
+  <button id="showIssues" style="display: none;">Show Issues</button>
+  <div id="issueModal" class="modal">
+    <div class="modal-content">
+      <ul id="issueList"></ul>
+    </div>
+  </div>
+  <script>
+
+    const statusWiseCountDiv = document.getElementById("status-wise-count");
+    const weekWiseCountDiv = document.getElementById("week-wise-count");
+    const avgClosureDiv = document.getElementById("average-weekly-closure-rate");
+    const showIssuesBtn = document.getElementById('showIssues');
+    const issueModal = document.getElementById('issueModal');
+    const issueList = document.getElementById('issueList');
+    let issues = [];
+
+    function handleSubmit(event) {
+      event.preventDefault();
+      statusWiseCountDiv.innerHTML = '';
+      weekWiseCountDiv.innerHTML = '';
+      avgClosureDiv.innerHTML = '';
+      const repoUrl = document.getElementById("searchTxt").value;
+      console.log(repoUrl);
+      getLatestIssues(repoUrl);
+      showPopUp();
+    }
+
+    function showPopUp() {
+      showIssuesBtn.style.display = 'block';
+      showIssuesBtn.addEventListener('click', () => {
+        issueList.innerHTML = ''; // Clear previous issue list
+
+        // Populate the issue list in the modal
+        issues.forEach(issue => {
+          const li = document.createElement('li');
+          li.textContent = `ID: ${issue.id} - Title: ${issue.title} - Created At: ${issue.created_at}`;
+          issueList.appendChild(li);
+        });
+
+        // Show the modal
+        issueModal.style.display = 'block';
+      });
+      // Attach click event listener to the modal (to close it)
+      issueModal.addEventListener('click', () => {
+        issueModal.style.display = 'none';
+      });
+    }
+
+
+    function countBy(arr, key, valueKey = null) {
+      const result = {};
+      arr.forEach(obj => {
+        const keyValue = obj[key];
+        const valueValue = valueKey ? obj[valueKey] : 1;
+        if (!result[keyValue]) {
+          result[keyValue] = 0;
+        }
+        result[keyValue] += valueValue;
+      });
+      return result;
+    }
+
+    // Helper function to get the week number for a date
+    function getWeekNumber(inputDate) {
+      const currentDate = new Date();
+      currentDate.setHours(0, 0, 0, 0);
+      inputDate.setHours(0, 0, 0, 0);
+      const inputWeekStart = new Date(inputDate.getTime() - ((inputDate.getDay() || 7) - 1) * 24 * 60 * 60 * 1000);
+      const currentWeekStart = new Date(currentDate.getTime() - ((currentDate.getDay() || 7) - 1) * 24 * 60 * 60 * 1000);
+      const weekOffset = (currentWeekStart - inputWeekStart) / (1000 * 60 * 60 * 24 * 7);
+      return weekOffset;
+    }
+
+    function partition(arr, key, valueKey = null) {
+      const result = [{}, {}];
+      arr.forEach(obj => {
+        const keyValue = obj[key];
+        const valueValue = valueKey ? obj[valueKey] : 1;
+        if (obj.state === "closed") {
+          if (!result[1][keyValue]) {
+            result[1][keyValue] = 0;
+          }
+          result[1][keyValue] += valueValue;
+        } else {
+          if (!result[0][keyValue]) {
+            result[0][keyValue] = 0;
+          }
+          result[0][keyValue] += valueValue;
+        }
+      });
+      return result;
+    }
+
+
+    function displayData(statusWiseCount, weekWiseCount, countOpenPerWeek, countClosedPerWeek) {
+      countTotalPerWeek = {};
+      openToCloseRatioPerWeek = {};
+      weeklyClosureRate = {};
+      for (const key in countOpenPerWeek) {
+        countTotalPerWeek[key] = countOpenPerWeek[key] + countClosedPerWeek[key];
+        openToCloseRatioPerWeek[key] = parseFloat((countOpenPerWeek[key] / countClosedPerWeek[key]).toFixed(2));
+        weeklyClosureRate[key] = parseFloat((countClosedPerWeek[key] / (countTotalPerWeek[key])).toFixed(2))
+      }
+
+      let averageWeeklyClosureRate = 0
+
+      for (const key in weeklyClosureRate) {
+        averageWeeklyClosureRate += weeklyClosureRate[key] / 11;
+      }
+
+      averageWeeklyClosureRate = parseFloat(averageWeeklyClosureRate.toFixed(2));
+
+      // Display the status-wise count of issues
+
+      const statusWiseCountTable = document.createElement("table");
+      const statusWiseCountTableHeader = `
+    <tr>
+      <th>Status</th>
+      <th>Count</th>
+    </tr>
+  `;
+      const statusWiseCountTableRows = Object.entries(statusWiseCount).map(([status, count]) => `
+    <tr>
+      <td>${status}</td>
+      <td>${count}</td>
+    </tr>
+  `);
+      statusWiseCountTable.innerHTML = `
+    <caption>Status-wise count of issues</caption>
+    ${statusWiseCountTableHeader}
+    ${statusWiseCountTableRows.join("")}
+  `;
+      statusWiseCountDiv.innerHTML = "";
+      statusWiseCountDiv.appendChild(statusWiseCountTable);
+
+      // Display the week-wise count of issues
+      const weekWiseCountTable = document.createElement("table");
+      const weekWiseCountTableHeader = `
+    <tr>
+      <th>Week</th>
+      <th>Issue Count</th>
+      <th>Ratio (Open/Closed)</th>
+      <th>Weekly Closure Rate</th>
+    </tr>
+  `;
+      const weekWiseCountTableRows = Object.entries(weekWiseCount).map(([weekNumber, countByState]) => `
+    <tr>
+      <td>Week ${weekNumber}</td>
+      <td>${countTotalPerWeek[weekNumber]}</td>
+      <td>${openToCloseRatioPerWeek[weekNumber]}</td>
+      <td>${weeklyClosureRate[weekNumber]}</td>
+    </tr>
+  `);
+      weekWiseCountTable.innerHTML = `
+    <caption>Week-wise metrics of issues</caption>
+    ${weekWiseCountTableHeader}
+    ${weekWiseCountTableRows.join("")}
+  `;
+      weekWiseCountDiv.innerHTML = "";
+      weekWiseCountDiv.appendChild(weekWiseCountTable);
+
+      avgClosureDiv.innerHTML = `<br>Average Weekly Closure Rate : ${averageWeeklyClosureRate}<br>`
+
+    }
+
+    function getMetrics(issues) {
+      const statusWiseCount = countBy(issues, "state");
+      const filteredIssues = issues.filter(issue => {
+        const weekOffset = getWeekNumber(new Date(issue.created_at));
+        return weekOffset <= 10;
+      });
+      const weekWiseCount = countBy(filteredIssues.map(issue => ({
+        week: getWeekNumber(new Date(issue.created_at)),
+        state: issue.state
+      })), "week", "state");
+      console.log(weekWiseCount);
+
+      const [newIssuesByWeek, closedIssuesByWeek] = partition(filteredIssues.map(issue => ({
+        week: getWeekNumber(new Date(issue.created_at)),
+        state: issue.state
+      })), "week", "state");
+      console.log(newIssuesByWeek);
+      console.log(closedIssuesByWeek);
+      const countOpenPerWeek = {};
+      for (const key in newIssuesByWeek) {
+        const openCount = (newIssuesByWeek[key].match(/open/g) || []).length;
+        countOpenPerWeek[key] = openCount;
+      }
+
+      console.log(countOpenPerWeek);
+      const countClosedPerWeek = {};
+      for (const key in closedIssuesByWeek) {
+        const closedCount = (closedIssuesByWeek[key].match(/closed/g) || []).length;
+        countClosedPerWeek[key] = closedCount;
+      }
+
+      console.log(countClosedPerWeek);
+      displayData(statusWiseCount, weekWiseCount, countOpenPerWeek, countClosedPerWeek);
+    }
+    async function getLatestIssues(repoUrl) {
+
+      const [_, repoOwner, repoName] = repoUrl.match(
+        /github\.com\/(.+)\/(.+)/
+      );
+      const apiUrl = `https://api.github.com/repos/${repoOwner}/${repoName}/issues?state=all&per_page=100`;
+      issues = [];
+      let pageNumber = 1;
+      let response;
+
+      do {
+        try {
+          response = await fetch(`${apiUrl}&page=${pageNumber}`);
+          const pageIssues = await response.json();
+          issues = issues.concat(pageIssues);
+          pageNumber++;
+          // document.getElementById('sdf').textContent = issues;
+
+        } catch (error) {
+          console.error(error);
+          return;
+        }
+      } while (
+        response.headers.get("link")?.includes('rel="next"') &&
+        pageNumber <= 10
+      );
+      getMetrics(issues);
+      console.log(issues.length)
+
+      // document.getElementById('sdf').textContent = issues[0].state;
+
+
+    }
+
+  </script>
+</body>
+
+</html>
